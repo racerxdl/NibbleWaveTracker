@@ -1,0 +1,18 @@
+Simple JSON
+- Header:
+    - Module name (UTF-8)
+    - Author (UTF-8)
+    - Copyright notice (UTF-8)
+    - Tracker version (uint32)
+    - BPM (float32)
+    - Rows per beat (uint8)
+    - Rows per pattern
+    - Primary highlight interval (uint8)
+    - Secondary highlight interval (uint8)
+- Patterns:
+    - Channel data (array, N channels)
+        - Row data (array, Rows per pattern)
+            - Note
+            - Instrument
+            - Volume
+            - Effects (array, 4)

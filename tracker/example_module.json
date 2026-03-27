@@ -1,0 +1,19 @@
+{
+ "title": " Great song ",
+ "author": " Great composer ",
+ "copyright": " All rights reserved (2026) ",
+ "version": 1,
+ "bpm": 120,
+ "beat_rows": 4,
+ "pattern_rows": 32,
+ "primary_highlight": 4,
+ "secondary_highlight": 2,
+ "channels": ["Square 1", "Square 2", "Square 3", "Noise"],
+ "patterns": {
+   "channels": [
+    [
+     {"note": 0, "instrument": 3, "volume": 7, "effects": [{"type": "a", "param0": 3, "param1": 4}]}
+    ]
+   ]
+  }
+}
