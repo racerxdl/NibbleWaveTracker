@@ -230,6 +230,22 @@ instTitle.className = "sidebar-title";
 instTitle.textContent = "INSTRUMENTS";
 rightSidebar.appendChild(instTitle);
 
+// Oscilloscope canvas at bottom of right sidebar
+const oscTitle = document.createElement("div");
+oscTitle.className = "sidebar-title osc-section";
+oscTitle.textContent = "OUTPUT";
+oscTitle.style.marginTop = "auto";
+oscTitle.style.flexShrink = "0";
+const oscCanvas = document.createElement("canvas");
+oscCanvas.className = "osc-section";
+oscCanvas.style.width = "100%";
+oscCanvas.style.height = "60px";
+oscCanvas.style.minHeight = "60px";
+oscCanvas.style.flexShrink = "0";
+oscCanvas.style.display = "block";
+const oscCtx = oscCanvas.getContext("2d");
+rightSidebar.append(oscTitle, oscCanvas);
+
 patternEditorDiv.append(leftSidebar, leftToggle, patternCanvasArea, rightToggle, rightSidebar);
 
 // Click-to-seek on pattern canvas
@@ -356,6 +372,16 @@ sbFields.forEach(f => {
 	sbEls[f.id] = val;
 });
 
+// F1 help hint in status bar
+const f1Hint = document.createElement("span");
+f1Hint.style.marginLeft = "auto";
+f1Hint.style.color = "var(--text-muted)";
+f1Hint.style.fontSize = "10px";
+f1Hint.textContent = "F1 Help";
+f1Hint.style.cursor = "pointer";
+f1Hint.onclick = () => window.toggleHelp();
+statusBar.appendChild(f1Hint);
+
 // ── Assemble body ──
 document.body.append(topBar, patternEditorDiv, instrumentEditorDiv, songEditorDiv, statusBar);
 
@@ -363,8 +389,9 @@ document.body.append(topBar, patternEditorDiv, instrumentEditorDiv, songEditorDi
 requestAnimationFrame(() => handleResize());
 
 function renderPatternInstruments() {
-	// Keep only the title
+	// Keep the title and oscilloscope elements
 	const title = rightSidebar.querySelector(".sidebar-title");
+	const oscSections = rightSidebar.querySelectorAll(".osc-section");
 	rightSidebar.innerHTML = "";
 	rightSidebar.appendChild(title);
 
@@ -400,6 +427,9 @@ function renderPatternInstruments() {
 
 		rightSidebar.appendChild(item);
 	});
+
+	// Re-attach oscilloscope at bottom
+	oscSections.forEach(el => rightSidebar.appendChild(el));
 }
 
 function setView(view) {
@@ -457,6 +487,14 @@ function handleResize() {
 		orderCanvas.height = Math.floor(oRect.height) * dpr;
 		orderCtx = orderCanvas.getContext("2d");
 		orderCtx.scale(dpr, dpr);
+	}
+
+	// Resize oscilloscope canvas
+	const oscRect = oscCanvas.getBoundingClientRect();
+	if (oscRect.width > 0 && oscRect.height > 0) {
+		oscCanvas.width = Math.floor(oscRect.width) * dpr;
+		oscCanvas.height = Math.floor(oscRect.height) * dpr;
+		oscCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 	}
 }
 
@@ -1023,6 +1061,10 @@ window.song = song;
 window.state = state;
 
 let lastInstrument = -1;
+
+// Oscilloscope
+let analyserNode = null;
+let analyserData = null;
 (function update() {
 	drawPattern(state, song, patternCtx, 16, 16, song.primaryHighlight, song.secondaryHighlight);
 	drawOrders(state, song, orderCtx, 16, 16);
@@ -1060,5 +1102,77 @@ let lastInstrument = -1;
 
 	updateMuteButtons();
 
+	// Draw oscilloscope
+	drawOscilloscope();
+
 	window.requestAnimationFrame(update);
 })()
+
+// ── Oscilloscope ──
+
+function ensureAnalyser() {
+	if (analyserNode) return;
+	const ctx = window._audioCtx;
+	const worklet = window._audioWorklet;
+	if (!ctx || !worklet) return;
+
+	analyserNode = ctx.createAnalyser();
+	analyserNode.fftSize = 2048;
+	analyserData = new Uint8Array(analyserNode.frequencyBinCount);
+	worklet.connect(analyserNode);
+}
+
+function drawOscilloscope() {
+	ensureAnalyser();
+
+	// Match canvas buffer to display size
+	const rect = oscCanvas.getBoundingClientRect();
+	if (rect.width === 0 || rect.height === 0) return;
+	const tw = Math.floor(rect.width);
+	const th = Math.floor(rect.height);
+	if (oscCanvas.width !== tw || oscCanvas.height !== th) {
+		oscCanvas.width = tw;
+		oscCanvas.height = th;
+	}
+
+	const w = oscCanvas.width;
+	const h = oscCanvas.height;
+
+	oscCtx.fillStyle = "#0d0d1a";
+	oscCtx.fillRect(0, 0, w, h);
+
+	if (!analyserNode || !analyserData) {
+		oscCtx.strokeStyle = "#2a2a4a";
+		oscCtx.lineWidth = 1;
+		oscCtx.beginPath();
+		oscCtx.moveTo(0, h / 2);
+		oscCtx.lineTo(w, h / 2);
+		oscCtx.stroke();
+		return;
+	}
+
+	analyserNode.getByteTimeDomainData(analyserData);
+
+	oscCtx.strokeStyle = "#00cc66";
+	oscCtx.lineWidth = 1.5;
+	oscCtx.beginPath();
+
+	const sliceWidth = w / analyserData.length;
+	let x = 0;
+	for (let i = 0; i < analyserData.length; i++) {
+		const v = analyserData[i] / 128.0;
+		const y = (v * h) / 2;
+		if (i === 0) oscCtx.moveTo(x, y);
+		else oscCtx.lineTo(x, y);
+		x += sliceWidth;
+	}
+	oscCtx.stroke();
+
+	// Center line
+	oscCtx.strokeStyle = "#1a1a2e";
+	oscCtx.lineWidth = 0.5;
+	oscCtx.beginPath();
+	oscCtx.moveTo(0, h / 2);
+	oscCtx.lineTo(w, h / 2);
+	oscCtx.stroke();
+}

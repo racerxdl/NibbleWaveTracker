@@ -15,6 +15,10 @@ async function ensureAudioStarted() {
 			audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-processor');
 			audioWorkletNode.connect(audioContext.destination);
 
+			// Expose for oscilloscope
+			window._audioCtx = audioContext;
+			window._audioWorklet = audioWorkletNode;
+
 			audioWorkletNode.port.onmessage = (e) => {
 				if (e.data.type === 'STATE_UPDATE' && window.state) {
 					window.state.playbackPattern = e.data.orderIndex;
