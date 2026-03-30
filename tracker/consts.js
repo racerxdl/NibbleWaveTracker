@@ -67,19 +67,19 @@ const noteEntryLUT = {
 };
 
 const UIColors = {
-	note: "#00F000",
-	noteHighlight: "#FFFF60",
-	instrument: "#7BD540",
-	volume: "#8080FF",
-	effect: "#FE7B5B",
-	white: "#FFFFFF",
-	channelSeparator: "#646464",
-	cursorRow: "#352985",
-	cursorRowEnd: "#1B3550",
+	note: "#00cc66",
+	noteHighlight: "#ffcc00",
+	instrument: "#88cc44",
+	volume: "#44aaff",
+	effect: "#ff8844",
+	white: "#c0c0d0",
+	channelSeparator: "#2a2a4a",
+	cursorRow: "#1a2a5a",
+	cursorRowEnd: "#0d1530",
 	recordingRow: "#6c2330",
 	recordingRowEnd: "#400f17",
-	cursor: "#808080",
-	cursorEnd: "#555555"
+	cursor: "#3355aa",
+	cursorEnd: "#223366"
 };
 
 export { cellWidth, cellHeight, characterSet, keyToNumLUT, keyToNumLUTSpecial, noteEntryLUT, UIColors, effectLUT, columnDimensions }

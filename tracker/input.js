@@ -17,8 +17,8 @@ async function ensureAudioStarted() {
 
 			audioWorkletNode.port.onmessage = (e) => {
 				if (e.data.type === 'STATE_UPDATE' && window.state) {
-					window.state.pattern = e.data.orderIndex;
-					window.state.row = e.data.row;
+					window.state.playbackPattern = e.data.orderIndex;
+					window.state.playbackRow = e.data.row;
 				}
 			};
 
@@ -41,11 +41,24 @@ window.addEventListener("keydown", function (e) {
 		pressed.push(key)
 	}
 
+	// Help overlay
+	if (e.key === "F1") {
+		e.preventDefault();
+		window.toggleHelp();
+		return;
+	}
+	if (e.key === "Escape" && window.toggleHelp) {
+		window.toggleHelp();
+		return;
+	}
+
 	if (e.key === "Enter") {
 		if (window.audioNode) {
 			if (window.state.isPlaying) {
 				window.audioNode.port.postMessage({ type: "STOP_SONG" });
 				window.state.isPlaying = false;
+				window.state.playbackRow = -1;
+				window.state.playbackPattern = -1;
 			} else {
 				window.audioNode.port.postMessage({
 					type: "START_SONG",
@@ -65,6 +78,7 @@ window.addEventListener("keydown", function (e) {
 		if (key == "=") e.preventDefault();
 		if (key == "-") e.preventDefault();
 		if (key == "insert") e.preventDefault();
+		if (key.match(/^f[0-9]+$/)) e.preventDefault();
 	}
 })
 
@@ -176,6 +190,7 @@ function handleInput(state, song) {
 		state.recording = false;
 		if (!state.firstOrderNumberTyped) {
 			if (justPressed.indexOf("+") !== -1) {
+				window.pushUndo();
 				let newOrder = [];
 				for (let c = 0; c < song.channelCount; c++) {
 					let lastPattern = song.orders[song.orders.length - 1][c];
@@ -188,6 +203,7 @@ function handleInput(state, song) {
 				song.orders.push(newOrder);
 			}
 			if (justPressed.indexOf("_") !== -1) {
+				window.pushUndo();
 				if (song.orders.length > 1) {
 					if (state.pattern === song.orders.length - 1) state.pattern--;
 					song.orders.splice(state.pattern, 1);
@@ -215,6 +231,7 @@ function handleInput(state, song) {
 			let key = justPressed[k];
 			let index = consts.keyToNumLUTSpecial.indexOf(key);
 			if (index !== -1) {
+				if (!state.firstOrderNumberTyped) window.pushUndo();
 				if (state.firstOrderNumberTyped) {
 					state.firstOrderNumberTyped = false;
 					song.orders[state.pattern][state.channel] &= (15 << 4);
@@ -238,7 +255,25 @@ function handleInput(state, song) {
 
 	// Clipboard Logic (Control)
 	if (isCtrl) {
-		if (justPressed.indexOf("c") !== -1 && state.selectionActive) {
+		// Undo/Redo
+		if (justPressed.indexOf("z") !== -1) { window.doUndo(); lastPressed = [...pressed]; return; }
+		if (justPressed.indexOf("y") !== -1) { window.doRedo(); lastPressed = [...pressed]; return; }
+
+		// Duplicate current pattern (Ctrl+D)
+		if (justPressed.indexOf("d") !== -1) {
+			window.pushUndo();
+			const curPatIndices = song.orders[state.pattern];
+			const newPatIndices = [];
+			for (let c = 0; c < song.channelCount; c++) {
+				const srcIdx = curPatIndices[c];
+				const newIdx = song.patterns.length;
+				song.patterns.push(JSON.parse(JSON.stringify(song.patterns[srcIdx])));
+				newPatIndices.push(newIdx);
+			}
+			song.orders.splice(state.pattern + 1, 0, newPatIndices);
+		}
+
+		if ((justPressed.indexOf("c") !== -1 || justPressed.indexOf("x") !== -1) && state.selectionActive) {
 			const minR = Math.min(state.selStartRow, state.selEndRow);
 			const maxR = Math.max(state.selStartRow, state.selEndRow);
 			const minC = Math.min(state.selStartChan, state.selEndChan);
@@ -288,7 +323,27 @@ function handleInput(state, song) {
 			}
 		}
 
+		// Cut: copy was already done above, now delete selection
+		if (justPressed.indexOf("x") !== -1 && state.selectionActive && clipboard) {
+			window.pushUndo();
+			const minR = Math.min(state.selStartRow, state.selEndRow);
+			const maxR = Math.max(state.selStartRow, state.selEndRow);
+			const minC = Math.min(state.selStartChan, state.selEndChan);
+			const maxC = Math.max(state.selStartChan, state.selEndChan);
+			for (let r = minR; r <= maxR; r++) {
+				for (let c = minC; c <= maxC; c++) {
+					const pIdx = song.orders[state.pattern][c];
+					const rowData = song.patterns[pIdx][c].rows[r];
+					rowData.note = -1;
+					rowData.instrument = -1;
+					rowData.volume = -1;
+					rowData.effects.forEach(e => { e.type = ""; e.params = 0; });
+				}
+			}
+		}
+
 		if (justPressed.indexOf("v") !== -1 && clipboard) {
+			window.pushUndo();
 			for (let r = 0; r < clipboard.length; r++) {
 				const targetRow = state.row + r;
 				if (targetRow >= song.rowsPerPattern) break;
@@ -387,12 +442,14 @@ function handleInput(state, song) {
 	});
 
 	if (justPressed.indexOf("insert") !== -1) {
+		window.pushUndo();
 		currentPatternData.rows.splice(state.row, 0, createEmptyRow(state.channel));
 		currentPatternData.rows.pop();
 	}
 
 	if (justPressed.indexOf("\\") !== -1) {
 		if (state.recording && state.column == 0) {
+			window.pushUndo();
 			currentPatternData.rows[state.row].note = -2;
 		}
 	}
@@ -404,6 +461,7 @@ function handleInput(state, song) {
 			if (key in consts.noteEntryLUT) {
 				let noteIndex = consts.noteEntryLUT[key] + state.octave * 12;
 				if (state.recording && state.column == 0) {
+					window.pushUndo();
 					currentPatternData.rows[state.row].note = noteIndex;
 					currentPatternData.rows[state.row].instrument = state.currentInstrument;
 					increaseRow(state, song);
@@ -427,6 +485,15 @@ function handleInput(state, song) {
 	}
 
 	if (state.recording) {
+		// Snapshot before any recording mutation
+		const hasMutationKey = justPressed.some(k =>
+			k === "backspace" || k === "delete" ||
+			k in consts.noteEntryLUT ||
+			consts.keyToNumLUT.indexOf(k) !== -1 ||
+			consts.effectLUT.indexOf(k) !== -1
+		);
+		if (hasMutationKey) window.pushUndo();
+
 		// Selection Deletion
 		if (state.selectionActive && (justPressed.indexOf("backspace") !== -1 || justPressed.indexOf("delete") !== -1)) {
 			const minR = Math.min(state.selStartRow, state.selEndRow);
@@ -595,6 +662,17 @@ function handleInput(state, song) {
 		}
 	}
 	if (justPressed.indexOf(" ") !== -1) state.recording = !state.recording;
+
+	// Channel mute: F9-F12
+	for (let fi = 0; fi < 4; fi++) {
+		if (justPressed.indexOf("f" + (fi + 9)) !== -1) {
+			state.channelMute[fi] = !state.channelMute[fi];
+			if (window.audioNode) {
+				window.audioNode.port.postMessage({ type: "MUTE_STATE", channels: state.channelMute });
+			}
+		}
+	}
+
 	lastPressed = [...pressed];
 }
 export { handleInput }

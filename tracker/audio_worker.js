@@ -126,6 +126,7 @@ class ChannelSequencer {
 		this.volumeSlideAccum = 0;
 		this.arpTick = 0;
 		this.mutedByNoteOff = false;
+		this.retriggerCounter = 0;
 
 		this.isSampleMode = false;
 		this.sampleData = null;
@@ -145,6 +146,7 @@ class ChannelSequencer {
 		this.volumeSlideAccum = 0;
 		this.arpTick = 0;
 		this.mutedByNoteOff = false;
+		this.retriggerCounter = 0;
 		this.columnVolume = 15;
 	}
 
@@ -202,6 +204,8 @@ class ChannelSequencer {
 		this.glissandoTarget = -1;
 		this.volumeSlideAccum = 0;
 
+		// Click suppression: mute for one tick before setting new period
+		this.dcsg.write(0x80 | (this.channelIndex << 5) | 0x10 | 0x0F);
 		this.update();
 	}
 
@@ -383,6 +387,17 @@ class ChannelSequencer {
 						if (Math.abs(this.continuousPitchOffset) >= qAmount) this.continuousPitchOffset = qAmount * qDir;
 					}
 					break;
+				case 0x19: // Retrig (p effect)
+					if (p > 0) {
+						this.retriggerCounter++;
+						if (this.retriggerCounter >= p) {
+							this.retriggerCounter = 0;
+							this.indices.volume = 0;
+							this.indices.arpeggio = 0;
+							this.indices.pitch = 0;
+						}
+					}
+					break;
 			}
 		}
 	}
@@ -416,6 +431,7 @@ class AudioProcessor extends AudioWorkletProcessor {
 		this.samplesUntilNextSampleTick = 0;
 		this.lpValue = 0;
 		this.alpha = 0.25;
+		this.mutedChannels = [false, false, false, false];
 		this.port.onmessage = this.handleMessage.bind(this);
 	}
 
@@ -439,6 +455,7 @@ class AudioProcessor extends AudioWorkletProcessor {
 				if (typeof d.effect === 'string') {
 					if (d.effect === 'q') effId = 0x1A; else if (d.effect === 'r') effId = 0x1B;
 					else if (d.effect === 'a') effId = 0xA; else if (d.effect === 'v') effId = 0x16;
+					else if (d.effect === 'p') effId = 0x19;
 					else effId = parseInt(d.effect, 16);
 				}
 				const targetCh = d.channel !== undefined ? d.channel : (d.isNoise ? 3 : 0);
@@ -447,6 +464,15 @@ class AudioProcessor extends AudioWorkletProcessor {
 				break;
 			case 'STOP_NOTE': this.sequencers.forEach(s => s.stop()); break;
 			case 'WRITE': this.dcsg.write(d.val); break;
+			case 'MUTE_STATE': this.mutedChannels = d.channels || [false, false, false, false]; break;
+			case 'SEEK':
+				this.currentOrderIndex = d.orderIndex !== undefined ? d.orderIndex : this.currentOrderIndex;
+				this.currentRow = d.row !== undefined ? d.row : 0;
+				this.samplesUntilNextRow = 0;
+				this.sequencers.forEach(s => s.stop());
+				this.sequencers.forEach(s => s.resetEffects());
+				this.advanceRow();
+				break;
 		}
 	}
 
@@ -470,7 +496,7 @@ class AudioProcessor extends AudioWorkletProcessor {
 				this.samplesUntilNextTick--;
 				if (this.samplesUntilNextTick <= 0) {
 					this.samplesUntilNextTick += this.samplesPerTick;
-					this.sequencers.forEach(s => s.update());
+					this.sequencers.forEach((s, i) => { if (!this.mutedChannels[i]) s.update(); });
 				}
 				this.samplesUntilNextSampleTick--;
 				if (this.samplesUntilNextSampleTick <= 0) {
@@ -490,6 +516,7 @@ class AudioProcessor extends AudioWorkletProcessor {
 		if (!this.song || !this.isPlaying) return;
 		const orderEntry = this.song.orders[this.currentOrderIndex];
 		for (let c = 0; c < 4; c++) {
+			if (this.mutedChannels[c]) continue;
 			const patternIdx = orderEntry[c], channel = this.song.patterns[patternIdx][c];
 			if (!channel || !channel.rows) continue;
 			const rowData = channel.rows[this.currentRow];
@@ -502,6 +529,7 @@ class AudioProcessor extends AudioWorkletProcessor {
 						if (typeof type === 'string') {
 							if (type === 'q') type = 0x1A; else if (type === 'r') type = 0x1B;
 							else if (type === 'a') type = 0xA; else if (type === 'v') type = 0x16;
+							else if (type === 'p') type = 0x19;
 							else type = parseInt(type, 16);
 						}
 						effectsArr.push(type); paramsArr.push(p); hasAnyEffect = true;

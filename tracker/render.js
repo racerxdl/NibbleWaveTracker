@@ -11,7 +11,7 @@ textBuffCanvas.height = consts.cellHeight * colorCount;
 
 let textBuffCtx = textBuffCanvas.getContext("2d");
 
-textBuffCtx.fillStyle = "black";
+textBuffCtx.fillStyle = "#0d0d1a";
 textBuffCtx.fillRect(0, 0, textBuffCanvas.width, textBuffCanvas.height);
 
 textBuffCtx.font = utils.getFitFont(textBuffCtx, "C", consts.cellWidth, consts.cellHeight);
@@ -110,8 +110,11 @@ function drawRow(patternCtx, textBuff, row, cellX, cellY, cellWidth, cellHeight,
 
 function drawPattern(state, song, patternCtx, cellWidth, cellHeight, primaryHighlight, secondaryHighlight) {
 	// Clear the whole canvas background to ensure previous frame is wiped
-	patternCtx.fillStyle = "black";
-	patternCtx.fillRect(0, 0, patternCtx.canvas.width, patternCtx.canvas.height);
+	// Use logical dimensions (canvas.width/dpr) since ctx is DPR-scaled
+	const logicalW = patternCtx.canvas.width / (window.devicePixelRatio || 1);
+	const logicalH = patternCtx.canvas.height / (window.devicePixelRatio || 1);
+	patternCtx.fillStyle = "#0d0d1a";
+	patternCtx.fillRect(0, 0, logicalW, logicalH);
 
 	// Calculate the vertical scroll offset so the current row is 25% down the canvas
 	const targetBuffer = patternCtx.canvas.height * 0.25;
@@ -149,7 +152,7 @@ function drawPattern(state, song, patternCtx, cellWidth, cellHeight, primaryHigh
 		const minChan = Math.min(state.selStartChan, state.selEndChan);
 		const maxChan = Math.max(state.selStartChan, state.selEndChan);
 
-		patternCtx.fillStyle = "rgba(100, 149, 237, 0.4)"; // CornflowerBlue with alpha
+		patternCtx.fillStyle = "rgba(51, 85, 170, 0.35)";
 
 		for (let c = minChan; c <= maxChan; c++) {
 			const chanXStart = (c === 0 ? 0 : pastCurrentCells[c - 1]);
@@ -194,12 +197,33 @@ function drawPattern(state, song, patternCtx, cellWidth, cellHeight, primaryHigh
 
 	patternCtx.fillStyle = consts.UIColors.channelSeparator;
 	const topOfCanvas = -translationY;
-	const canvasFullHeight = patternCtx.canvas.height;
+	const canvasFullHeight = logicalH;
 
 	for (let x = 0; x < pastCurrentCells.length; x++) {
 		patternCtx.fillRect((pastCurrentCells[x] + 2) * cellWidth, topOfCanvas, 1, canvasFullHeight);
 	}
 	patternCtx.fillRect(2 * cellWidth, topOfCanvas, 1, canvasFullHeight);
+
+	// Render muted channel overlays
+	if (state.channelMute) {
+		const channelStarts = [0, ...pastCurrentCells];
+		for (let c = 0; c < state.channelMute.length; c++) {
+			if (state.channelMute[c]) {
+				const chanX = (channelStarts[c] + 2) * cellWidth;
+				const chanWidth = (pastCurrentCells[c] - channelStarts[c]) * cellWidth;
+				patternCtx.globalAlpha = 0.4;
+				patternCtx.fillStyle = "#cc3344";
+				patternCtx.fillRect(chanX, topOfCanvas, chanWidth, canvasFullHeight);
+				// "M" label at top of channel
+				patternCtx.globalAlpha = 0.8;
+				patternCtx.font = "bold 14px monospace";
+				patternCtx.fillStyle = "#fff";
+				patternCtx.textAlign = "center";
+				patternCtx.fillText("M", chanX + chanWidth / 2, topOfCanvas + 20);
+				patternCtx.textAlign = "start";
+			}
+		}
+	}
 
 	// Render Cursor Row Highlight
 	let rowGradient = patternCtx.createLinearGradient(0, cellHeight * state.row, 0, cellHeight * (state.row + 1));
@@ -228,14 +252,26 @@ function drawPattern(state, song, patternCtx, cellWidth, cellHeight, primaryHigh
 	patternCtx.fillStyle = cursorGradient;
 	patternCtx.fillRect((curPastCells[state.channel] + cursorX + 2) * cellWidth, cellHeight * state.row, cellWidth * cursorWidth, cellHeight);
 
+	// Render playback position indicator (separate from cursor)
+	if (state.isPlaying && state.playbackRow >= 0 && state.playbackPattern === state.pattern) {
+		patternCtx.globalAlpha = 0.35;
+		patternCtx.fillStyle = "#44aaff";
+		patternCtx.fillRect(cellWidth * 2, cellHeight * state.playbackRow, currentCell * cellWidth, cellHeight);
+		// Thin bright line at top of playback row
+		patternCtx.globalAlpha = 0.7;
+		patternCtx.fillRect(cellWidth * 2, cellHeight * state.playbackRow, currentCell * cellWidth, 2);
+	}
+
 	patternCtx.restore();
 }
 
 function drawOrders(state, song, orderCtx, cellWidth, cellHeight) {
 	orderCtx.globalAlpha = 1;
-	orderCtx.clearRect(0, 0, orderCtx.canvas.width, orderCtx.canvas.height);
-	orderCtx.fillStyle = "black";
-	orderCtx.fillRect(0, 0, orderCtx.canvas.width, orderCtx.canvas.height);
+	const logW = orderCtx.canvas.width / (window.devicePixelRatio || 1);
+	const logH = orderCtx.canvas.height / (window.devicePixelRatio || 1);
+	orderCtx.clearRect(0, 0, logW, logH);
+	orderCtx.fillStyle = "#0d0d1a";
+	orderCtx.fillRect(0, 0, logW, logH);
 
 	orderCtx.save();
 	orderCtx.translate(cellWidth, cellHeight * 2);
